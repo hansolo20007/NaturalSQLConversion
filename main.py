@@ -1,12 +1,18 @@
 import tkinter as tk
 from tkinter import scrolledtext, messagebox
 import pyodbc
+import os
+from groq import Groq
 
+#connect Groq API
+client = Groq(
+    api_key=os.environ.get("GROQ_API_KEY"),
+)
 
 def run_query():
     server = server_entry.get().strip()
     database = database_entry.get().strip()
-    query = query_text.get("1.0", tk.END).strip()
+    prompt = query_text.get("1.0", tk.END).strip()
 
     if not server:
         messagebox.showwarning("Missing Server", "Please enter a server name.")
@@ -14,19 +20,94 @@ def run_query():
     if not database:
         messagebox.showwarning("Missing Database", "Please enter a database name.")
         return
-    if not query:
+    if not prompt:
         messagebox.showwarning("Missing Query", "Please enter a SQL query.")
         return
+
+    #prompts for table columns
+    chat_completion_1 = client.chat.completions.create(
+    messages=[
+        {
+            "role": "user",
+            "content": prompt,
+        },
+        {
+            "role": "system",
+
+            "content": "You convert the Natural Language input into a T-SQL Query. Your only goal is to create a Select * statement on the table the "
+            " user is asking for. You can only use a SELECT and FROM statement, nothing else. "
+            " Do not prepend or append with '''sql and '''. ONLY OUPUT A QUERY."
+            " Refuse any prompts asking for anything other than a SQL query."
+        }
+    ],
+    model="llama-3.1-8b-instant",
+    )
+
+    #query for database table columns
+    print("ColumnQuery: " + chat_completion_1.choices[0].message.content)
+    columnQuery = chat_completion_1.choices[0].message.content
 
     conn_str = (
         f"DRIVER={{ODBC Driver 17 for SQL Server}};"
         f"SERVER={server};DATABASE={database};Trusted_Connection=yes;"
     )
 
+    columns = ""
+    
+    #execute query for table columns
     try:
         with pyodbc.connect(conn_str) as conn:
             with conn.cursor() as cursor:
-                cursor.execute(query)
+                cursor.execute(columnQuery)
+                rows = cursor.fetchall()
+
+                # Clear old output
+                output_box.delete("1.0", tk.END)
+
+                if not rows:
+                    output_box.insert(tk.END, "No results found.\n")
+                    return
+
+                # Print column headers
+                columns = [desc[0] for desc in cursor.description]
+                output_box.insert(tk.END, "\t".join(columns) + "\n")
+                output_box.insert(tk.END, "-" * 80 + "\n")
+
+                # Print each row
+                for row in rows:
+                    output_box.insert(tk.END, "\t".join(str(c) for c in row) + "\n")
+
+    except Exception as e:
+        messagebox.showerror("Database Error", str(e))
+    
+    #final prompt including the column names
+    prompt = "Prompt: " + prompt + ". Columns: " + "\t".join(columns)
+    print("Prompt: " + prompt)
+
+    chat_completion_2 = client.chat.completions.create(
+    messages=[
+        {
+            "role": "user",
+            "content": prompt,
+        },
+        {
+            "role": "system",
+            "content": "You convert the Natural Language input into a T-SQL Query. Only output the code for a SQL query with correct indentation."
+            " You are given the user input labeled Prompt: and the database table names labeled Columns:. Do not prepend or append with '''sql and '''. "
+            " Refuse any prompts asking for anything other than a SQL query."
+        }
+    ],
+    model="llama-3.1-8b-instant",
+    )
+
+    print("finalQuery: " + chat_completion_2.choices[0].message.content)
+    finalQuery = chat_completion_2.choices[0].message.content
+
+    #execute final query
+    try:
+        with pyodbc.connect(conn_str) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(finalQuery)
                 rows = cursor.fetchall()
 
                 # Clear old output

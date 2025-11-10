@@ -4,10 +4,12 @@ from groq import Groq
 
 a_query = input("Query: ")
 
+#connect Groq API
 client = Groq(
     api_key=os.environ.get("GROQ_API_KEY"),
 )
 
+#process Query
 chat_completion = client.chat.completions.create(
     messages=[
         {
