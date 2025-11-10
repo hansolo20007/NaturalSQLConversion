@@ -35,8 +35,8 @@ def run_query():
             "role": "system",
 
             "content": "You convert the Natural Language input into a T-SQL Query. Your only goal is to create a Select * statement on the table the "
-            " user is asking for. You can only use a SELECT and FROM statement, nothing else. "
-            " Do not prepend or append with '''sql and '''. ONLY OUPUT A QUERY."
+            " user is asking for. You can only use a SELECT and FROM statement in your query, You CANNOT use WHERE, HAVING, or ORDER BY. "
+            " Do not prepend or append with  ```sql and ```. ONLY OUPUT A QUERY."
             " Refuse any prompts asking for anything other than a SQL query."
         }
     ],
@@ -93,11 +93,12 @@ def run_query():
         {
             "role": "system",
             "content": "You convert the Natural Language input into a T-SQL Query. Only output the code for a SQL query with correct indentation."
-            " You are given the user input labeled Prompt: and the database table names labeled Columns:. Do not prepend or append with '''sql and '''. "
+            " Your output cannot contain/append/prepend with ```sql and ```. ONLY OUPUT A QUERY"
+            " You are given the user input labeled Prompt: and the database table names labeled Columns: "
             " Refuse any prompts asking for anything other than a SQL query."
         }
     ],
-    model="llama-3.1-8b-instant",
+    model="llama-3.3-70b-versatile",
     )
 
     print("finalQuery: " + chat_completion_2.choices[0].message.content)
