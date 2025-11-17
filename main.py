@@ -29,7 +29,7 @@ def run_query():
     messages=[
         {
             "role": "user",
-            "content": prompt,
+            "content": prompt + ". Do not use WHERE, HAVING, or ORDER BY in the query.",
         },
         {
             "role": "system",
@@ -127,6 +127,9 @@ def run_query():
                 for row in rows:
                     output_box.insert(tk.END, "\t".join(str(c) for c in row) + "\n")
 
+                #print final query
+                output_box_query.insert(tk.END, finalQuery)
+
     except Exception as e:
         messagebox.showerror("Database Error", str(e))
 
@@ -134,7 +137,7 @@ def run_query():
 # --- GUI Setup ---
 root = tk.Tk()
 root.title("SQL Server Query Tool")
-root.geometry("750x550")
+root.geometry("750x750")
 root.resizable(False, False)
 
 # --- Connection Info Frame ---
@@ -150,7 +153,7 @@ database_entry = tk.Entry(conn_frame, width=30)
 database_entry.grid(row=0, column=3, padx=5, pady=5)
 
 # --- Query Section ---
-tk.Label(root, text="Enter SQL Query:").pack(anchor="w", padx=15, pady=(5, 0))
+tk.Label(root, text="Enter Prompt:").pack(anchor="w", padx=15, pady=(5, 0))
 query_text = scrolledtext.ScrolledText(root, height=6, width=90)
 query_text.pack(padx=15, pady=5)
 
@@ -158,9 +161,14 @@ query_text.pack(padx=15, pady=5)
 run_btn = tk.Button(root, text="Run Query", command=run_query, bg="#4CAF50", fg="white", width=15)
 run_btn.pack(pady=5)
 
+# --- Output Section Query ---
+tk.Label(root, text="Query:").pack(anchor="w", padx=15, pady=(10, 0))
+output_box_query = scrolledtext.ScrolledText(root, height=10, width=90)
+output_box_query.pack(padx=15, pady=5)
+
 # --- Output Section ---
 tk.Label(root, text="Results:").pack(anchor="w", padx=15, pady=(10, 0))
-output_box = scrolledtext.ScrolledText(root, height=15, width=90)
+output_box = scrolledtext.ScrolledText(root, height=10, width=90)
 output_box.pack(padx=15, pady=5)
 
 root.mainloop()
