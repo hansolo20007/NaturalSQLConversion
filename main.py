@@ -23,35 +23,50 @@ def run_query():
     if not prompt:
         messagebox.showwarning("Missing Query", "Please enter a SQL query.")
         return
+    
+    conn_str = (
+        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+        f"SERVER={server};DATABASE={database};Trusted_Connection=yes;"
+    )
+    
+    #Get database table names
 
-    #prompts for table columns
+    tableQuery = "SELECT name\nFROM sys.tables;"
+    table_names = ""
+    try:
+        with pyodbc.connect(conn_str) as conn:
+            with conn.cursor() as cursor:
+                for row in cursor.tables(None, None, None, 'TABLE'):
+                    table_names += (row.table_name)
+                    table_names += " "
+                
+    except Exception as e:
+        messagebox.showerror("Database Error", str(e))
+    #print("Table Names:\n")
+    #print(table_names)
+
+    #Table information prompt
     chat_completion_1 = client.chat.completions.create(
     messages=[
         {
             "role": "user",
-            "content": prompt + ". Do not use WHERE, HAVING, or ORDER BY in the query.",
+            "content": prompt + ". Do not use WHERE, HAVING, ORDER BY, or JOIN in the query. Here is a list of all tables in the database: " + table_names,
         },
         {
             "role": "system",
 
-            "content": "You convert the Natural Language input into a T-SQL Query. Your only goal is to create a Select * statement on the table the "
+            "content": "You convert the Natural Language input into a T-SQL Query. Your only goal is to create a Select * statement on the table (can be multiple) the "
             " user is asking for. You can only use a SELECT and FROM statement in your query, You CANNOT use WHERE, HAVING, or ORDER BY. "
-            " Do not prepend or append with  ```sql and ```. ONLY OUPUT A QUERY."
+            " ONLY OUPUT A QUERY."
             " Refuse any prompts asking for anything other than a SQL query."
         }
     ],
-    model="llama-3.1-8b-instant",
+    model="llama-3.3-70b-versatile",
     )
 
     #query for database table columns
     print("ColumnQuery: " + chat_completion_1.choices[0].message.content)
     columnQuery = chat_completion_1.choices[0].message.content
-
-    conn_str = (
-        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-        f"SERVER={server};DATABASE={database};Trusted_Connection=yes;"
-    )
-
     columns = ""
     
     #execute query for table columns
@@ -62,7 +77,9 @@ def run_query():
                 rows = cursor.fetchall()
 
                 # Clear old output
-                output_box.delete("1.0", tk.END)
+                output_box_query.delete("1.0", tk.END)
+
+                output_box_query.insert(tk.END, columnQuery)
 
                 if not rows:
                     output_box.insert(tk.END, "No results found.\n")
@@ -80,7 +97,7 @@ def run_query():
     except Exception as e:
         messagebox.showerror("Database Error", str(e))
     
-    #final prompt including the column names
+    #Query generation prompt
     prompt = "Prompt: " + prompt + ". Columns: " + "\t".join(columns)
     print("Prompt: " + prompt)
 
@@ -88,12 +105,12 @@ def run_query():
     messages=[
         {
             "role": "user",
-            "content": prompt,
+            "content": prompt + ". Here is a list of all tables in the database: " + table_names,
         },
         {
             "role": "system",
             "content": "You convert the Natural Language input into a T-SQL Query. Only output the code for a SQL query with correct indentation."
-            " Your output cannot contain/append/prepend with ```sql and ```. ONLY OUPUT A QUERY"
+            " ONLY OUPUT A QUERY"
             " You are given the user input labeled Prompt: and the database table names labeled Columns: "
             " Refuse any prompts asking for anything other than a SQL query."
         }
@@ -101,8 +118,14 @@ def run_query():
     model="llama-3.3-70b-versatile",
     )
 
-    print("finalQuery: " + chat_completion_2.choices[0].message.content)
+
+    
     finalQuery = chat_completion_2.choices[0].message.content
+    print("finalQuery BC: " + finalQuery)
+    #clean up result
+    finalQuery = finalQuery.replace("sql", "")
+    finalQuery = finalQuery.replace("`", "")
+    print("finalQuery: " + finalQuery)
 
     #execute final query
     try:
@@ -113,6 +136,10 @@ def run_query():
 
                 # Clear old output
                 output_box.delete("1.0", tk.END)
+                output_box_query.delete("1.0", tk.END)
+
+                #print final query
+                output_box_query.insert(tk.END, finalQuery)
 
                 if not rows:
                     output_box.insert(tk.END, "No results found.\n")
@@ -127,8 +154,7 @@ def run_query():
                 for row in rows:
                     output_box.insert(tk.END, "\t".join(str(c) for c in row) + "\n")
 
-                #print final query
-                output_box_query.insert(tk.END, finalQuery)
+                
 
     except Exception as e:
         messagebox.showerror("Database Error", str(e))
