@@ -55,8 +55,10 @@ def run_query():
         {
             "role": "system",
 
-            "content": "You convert the Natural Language input into a T-SQL Query. Your only goal is to create a Select * statement on the table (can be multiple) the "
-            " user is asking for. You can only use a SELECT and FROM statement in your query, You CANNOT use WHERE, HAVING, or ORDER BY. "
+            "content": "You convert the Natural Language input into a T-SQL Query. You cannot under no circumstances use the following: "
+            " CREATE, DELETE, ALTER, DROP, WHERE, HAVING, or ORDER BY"
+            " Your only goal is to create a Select * statement on the table (can be multiple) the "
+            " user is asking for. You can only use a SELECT and FROM statement in your query. "
             " ONLY OUPUT A QUERY."
             " Refuse any prompts asking for anything other than a SQL query."
         }
@@ -110,7 +112,8 @@ def run_query():
         {
             "role": "system",
             "content": "You convert the Natural Language input into a T-SQL Query. Only output the code for a SQL query with correct indentation."
-            " ONLY OUPUT A QUERY"
+            " ONLY OUPUT A QUERY. You cannot under no circumstances use the following: "
+            " CREATE, DELETE, ALTER, DROP"
             " You are given the user input labeled Prompt: and the database table names labeled Columns: "
             " Refuse any prompts asking for anything other than a SQL query."
         }
@@ -122,24 +125,33 @@ def run_query():
     
     finalQuery = chat_completion_2.choices[0].message.content
     print("finalQuery BC: " + finalQuery)
+
     #clean up result
     finalQuery = finalQuery.replace("sql", "")
     finalQuery = finalQuery.replace("`", "")
     print("finalQuery: " + finalQuery)
+
+
+    # Clear old output
+    output_box.delete("1.0", tk.END)
+    output_box_query.delete("1.0", tk.END)
+
+    #print final query
+    output_box_query.insert(tk.END, finalQuery)
+    
+    #Detect modify commands
+    keywords = ["DROP", "CREATE", "ALTER", "DELETE", "UPDATE"]
+    for k in keywords:
+        if k in finalQuery:
+            output_box.insert(tk.END, "Cannot CREATE, DELETE, ALTER, UPDATE, or DROP!.\n")
+            return
 
     #execute final query
     try:
         with pyodbc.connect(conn_str) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(finalQuery)
-                rows = cursor.fetchall()
-
-                # Clear old output
-                output_box.delete("1.0", tk.END)
-                output_box_query.delete("1.0", tk.END)
-
-                #print final query
-                output_box_query.insert(tk.END, finalQuery)
+                rows = cursor.fetchall()                
 
                 if not rows:
                     output_box.insert(tk.END, "No results found.\n")
