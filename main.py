@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import scrolledtext, messagebox
+from tkinter import scrolledtext, messagebox, ttk, font
 import pyodbc
 import os
 from groq import Groq
@@ -12,7 +12,7 @@ client = Groq(
 def run_query():
     server = server_entry.get().strip()
     database = database_entry.get().strip()
-    prompt = query_text.get("1.0", tk.END).strip()
+    prompt = prompt_text.get("1.0", tk.END).strip()
 
     if not server:
         messagebox.showwarning("Missing Server", "Please enter a server name.")
@@ -21,7 +21,7 @@ def run_query():
         messagebox.showwarning("Missing Database", "Please enter a database name.")
         return
     if not prompt:
-        messagebox.showwarning("Missing Query", "Please enter a SQL query.")
+        messagebox.showwarning("Missing Prompt", "Please enter a prompt.")
         return
     
     conn_str = (
@@ -78,23 +78,11 @@ def run_query():
                 cursor.execute(columnQuery)
                 rows = cursor.fetchall()
 
-                # Clear old output
-                output_box_query.delete("1.0", tk.END)
-
-                output_box_query.insert(tk.END, columnQuery)
-
                 if not rows:
-                    output_box.insert(tk.END, "No results found.\n")
+                    messagebox.showinfo("Results", "Query executed successfully.\n\nNo results found.")
                     return
 
-                # Print column headers
                 columns = [desc[0] for desc in cursor.description]
-                output_box.insert(tk.END, "\t".join(columns) + "\n")
-                output_box.insert(tk.END, "-" * 80 + "\n")
-
-                # Print each row
-                for row in rows:
-                    output_box.insert(tk.END, "\t".join(str(c) for c in row) + "\n")
 
     except Exception as e:
         messagebox.showerror("Database Error", str(e))
@@ -124,26 +112,22 @@ def run_query():
 
     
     finalQuery = chat_completion_2.choices[0].message.content
-    print("finalQuery BC: " + finalQuery)
+    #print("finalQuery BC: " + finalQuery)
 
     #clean up result
     finalQuery = finalQuery.replace("sql", "")
     finalQuery = finalQuery.replace("`", "")
+
+    #output final query
     print("finalQuery: " + finalQuery)
-
-
-    # Clear old output
-    output_box.delete("1.0", tk.END)
-    output_box_query.delete("1.0", tk.END)
-
-    #print final query
-    output_box_query.insert(tk.END, finalQuery)
+    query_text.delete("1.0", tk.END)
+    query_text.insert(tk.END, finalQuery)
     
     #Detect modify commands
     keywords = ["DROP", "CREATE", "ALTER", "DELETE", "UPDATE"]
     for k in keywords:
         if k in finalQuery:
-            output_box.insert(tk.END, "Cannot CREATE, DELETE, ALTER, UPDATE, or DROP!.\n")
+            print("Cannot CREATE, DELETE, ALTER, UPDATE, or DROP!.\n")
             return
 
     #execute final query
@@ -153,20 +137,47 @@ def run_query():
                 cursor.execute(finalQuery)
                 rows = cursor.fetchall()                
 
+                # Clear old Treeview data and columns
+                tree.delete(*tree.get_children())
+                tree["columns"] = ()
+
                 if not rows:
-                    output_box.insert(tk.END, "No results found.\n")
+                    messagebox.showinfo("Results", "Query executed successfully.\n\nNo results found.")
                     return
 
-                # Print column headers
+                # Extract column names
                 columns = [desc[0] for desc in cursor.description]
-                output_box.insert(tk.END, "\t".join(columns) + "\n")
-                output_box.insert(tk.END, "-" * 80 + "\n")
+                tree["columns"] = columns
 
-                # Print each row
+                # Determine proper column widths using font measurement
+                f = font.Font(font=tree_font)  # use same font as tree
+                padding = 20  # extra pixels
+
+                # Prepare column widths based on header and cell text
+                col_widths = []
+                for col_index, col_name in enumerate(columns):
+                    max_px = f.measure(str(col_name))
+                    for r in rows:
+                        try:
+                            cell_text = "" if r[col_index] is None else str(r[col_index])
+                        except Exception:
+                            cell_text = str(r[col_index])
+                        w = f.measure(cell_text)
+                        if w > max_px:
+                            max_px = w
+                    col_widths.append(max_px + padding)
+
+                # Configure Treeview columns / headings
+                for idx, col in enumerate(columns):
+                    tree.heading(col, text=col)
+                    # set width and allow the column to stretch if space remains
+                    tree.column(col, width=col_widths[idx], anchor="w", stretch=True)
+
+                # Insert rows
                 for row in rows:
-                    output_box.insert(tk.END, "\t".join(str(c) for c in row) + "\n")
-
-                
+                    # Convert row to tuple of strings (None -> "")
+                    vals = tuple("" if v is None else v for v in row)
+                    tree.insert("", "end", values=vals)
 
     except Exception as e:
         messagebox.showerror("Database Error", str(e))
@@ -174,9 +185,9 @@ def run_query():
 
 # --- GUI Setup ---
 root = tk.Tk()
-root.title("SQL Server Query Tool")
-root.geometry("750x750")
-root.resizable(False, False)
+root.title("Natural to Query Translator")
+root.geometry("1000x650")
+root.resizable(True, True)
 
 # --- Connection Info Frame ---
 conn_frame = tk.LabelFrame(root, text="Connection Info", padx=10, pady=10)
@@ -190,23 +201,50 @@ tk.Label(conn_frame, text="Database Name:").grid(row=0, column=2, sticky="e", pa
 database_entry = tk.Entry(conn_frame, width=30)
 database_entry.grid(row=0, column=3, padx=5, pady=5)
 
-# --- Query Section ---
+# --- Prompt Section ---
 tk.Label(root, text="Enter Prompt:").pack(anchor="w", padx=15, pady=(5, 0))
-query_text = scrolledtext.ScrolledText(root, height=6, width=90)
-query_text.pack(padx=15, pady=5)
+prompt_text = scrolledtext.ScrolledText(root, height=6, width=120)
+prompt_text.pack(padx=15, pady=5, fill="x")
+
+# --- Query Section ---
+tk.Label(root, text="Query Output").pack(anchor="w", padx=15, pady=(5, 0))
+query_text = scrolledtext.ScrolledText(root, height=6, width=120)
+query_text.pack(padx=15, pady=5, fill="x")
 
 # --- Run Button ---
-run_btn = tk.Button(root, text="Run Query", command=run_query, bg="#4CAF50", fg="white", width=15)
+run_btn = tk.Button(root, text="Run", command=run_query, bg="#4CAF50", fg="white", width=15)
 run_btn.pack(pady=5)
 
-# --- Output Section Query ---
-tk.Label(root, text="Query:").pack(anchor="w", padx=15, pady=(10, 0))
-output_box_query = scrolledtext.ScrolledText(root, height=10, width=90)
-output_box_query.pack(padx=15, pady=5)
+# --- Treeview Output Table (with horizontal + vertical scrollbars) ---
+table_outer = tk.Frame(root)
+table_outer.pack(fill="both", expand=True, padx=15, pady=10)
 
-# --- Output Section ---
-tk.Label(root, text="Results:").pack(anchor="w", padx=15, pady=(10, 0))
-output_box = scrolledtext.ScrolledText(root, height=10, width=90)
-output_box.pack(padx=15, pady=5)
+# Treeview font (use a readable monospace or system font if you prefer)
+tree_font = ("Segoe UI", 10)
+
+tree_frame = tk.Frame(table_outer)
+tree_frame.pack(fill="both", expand=True, side="left")
+
+tree = ttk.Treeview(tree_frame, columns=(), show="headings")
+tree.configure(selectmode="browse")
+tree.tag_configure('odd', background='#f9f9f9')
+
+# Vertical scrollbar
+v_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+tree.configure(yscrollcommand=v_scroll.set)
+v_scroll.pack(side="right", fill="y")
+
+# Horizontal scrollbar
+h_scroll = ttk.Scrollbar(table_outer, orient="horizontal", command=tree.xview)
+tree.configure(xscrollcommand=h_scroll.set)
+h_scroll.pack(fill="x", side="bottom")
+
+# Put tree in a canvas/frame so it expands
+tree.pack(fill="both", expand=True, side="left")
+
+# Apply font to Treeview via style
+style = ttk.Style()
+style.configure("Treeview", font=tree_font)
+style.configure("Treeview.Heading", font=(tree_font[0], tree_font[1], "bold"))
 
 root.mainloop()
